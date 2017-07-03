@@ -1,11 +1,14 @@
 import Foundation
 
+typealias TaggedToken = (String, String?)
+
 public struct analysisResult {
     var score: Int
     var comparative: Double
     var words: [String]
     var positive: [String]
     var negative: [String]
+    var LemmaTags: [TaggedToken]
 }
 
 public struct sentimentWeightValue {
@@ -51,15 +54,15 @@ internal struct defaultAdjusters: sentimentAdjusters {
 }
 
 internal struct utils {
-    static fileprivate func loadWordList(fileName: String) -> Dictionary<NSString, AnyObject>? {
+    static fileprivate func loadWordList(fileName: String) -> [NSString: AnyObject]? {
         guard let path = Bundle.main.path(forResource: fileName, ofType: "json") else {
             return nil
         }
         
         do {
             let data = try Data(contentsOf: URL(fileURLWithPath: path), options: .alwaysMapped)
-            guard let jsonResult: Dictionary<NSString, AnyObject> = try JSONSerialization.jsonObject(with: data, options: .mutableContainers) as? Dictionary<NSString, AnyObject> else {
-                return Dictionary<NSString, AnyObject>()
+            guard let jsonResult: Dictionary<NSString, AnyObject> = try JSONSerialization.jsonObject(with: data, options: .mutableContainers) as? [NSString: AnyObject] else {
+                return [NSString: AnyObject]()
             }
             
             return jsonResult
@@ -73,7 +76,7 @@ internal struct utils {
 
 
 public struct Sentimently {
-    fileprivate var wordSource: Dictionary<NSString, AnyObject>?
+    fileprivate var wordSource: [NSString: AnyObject]?
     fileprivate let weights: sentimentAdjusters
     
     public init(weights: sentimentAdjusters) {
@@ -93,19 +96,58 @@ public struct Sentimently {
     public init() {
         self.init(fileName: "AFINN")
     }
-    
-    fileprivate func tokenize(_ phrase: String) -> [String]? {
-        var phrase = phrase.lowercased()
-        var characterSet = CharacterSet.alphanumerics
-        characterSet.insert(charactersIn: " ")
+
+    fileprivate func lemmatize(_ text: String) -> [TaggedToken] {
+        let options: NSLinguisticTagger.Options = [.omitWhitespace, .omitPunctuation, .omitOther]
+        let tagger = NSLinguisticTagger(tagSchemes: NSLinguisticTagger.availableTagSchemes(forLanguage: "en"),
+                                        options: Int(options.rawValue))
+        tagger.string = text
         
-        phrase = phrase.components(separatedBy: characterSet.inverted)
-            .joined()
+        var tokens: [TaggedToken] = []
         
-        return phrase.components(separatedBy: " ")
+        tagger.enumerateTags(in: NSMakeRange(0, text.characters.count), scheme:NSLinguisticTagSchemeLemma, options: options) { tag, tokenRange, _, _ in
+            let token = (text as NSString).substring(with: tokenRange)
+            tokens.append((token, tag))
+        }
+        return tokens
+    }
+
+    fileprivate func tagFlatten(token: TaggedToken) -> [String] {
+        var output = [String]()
+        let extractToken = token.0.lowercased()
+        output.append(extractToken)
+        if let extractTag = token.1 {
+            let extractTag = extractTag.lowercased()
+            if extractTag != extractToken {
+                output.append(extractTag)
+            }
+        }
+        return output
+    }
+    fileprivate func tokenize(tokens: [TaggedToken], wordSource: [NSString: AnyObject]) -> [String] {
+        var output = [String]()
+        
+        for position in 0...tokens.count - 1 {
+            var scope: Int = 0
+            var word: String = tokens[position].0
+            for tag in tagFlatten(token: tokens[position]) {
+                if tag != word {
+                    if let item = wordSource[tag as NSString] {
+                        let itemScore = Int(item as! NSNumber)
+                        if abs(scope) != abs(itemScore) {
+                            scope = itemScore
+                            word = tag
+                        }
+                    }
+                }
+            }
+            output.append(word)
+        }
+        
+        return output
     }
     
-    func calculateScore(position: Int, word: String, wordSource: Dictionary<NSString, AnyObject>, tokens: [String]) -> Int {
+    func calculateScore(position: Int, word: String, wordSource: [NSString: AnyObject], tokens: [String]) -> Int {
         var itemScore: Int = 0
         
         if let item = wordSource[word as NSString] {
@@ -143,24 +185,26 @@ public struct Sentimently {
     
     public func score(_ phrase: String, addWeights: [sentimentWeightValue] = []) -> analysisResult {
         
-        var output = analysisResult(score: 0, comparative: 0, words: [], positive: [], negative: [])
+        var output = analysisResult(score: 0, comparative: 0, words: [], positive: [], negative: [], LemmaTags: [])
         
         guard var wordSource = wordSource else {
             return output
         }
-        
-        guard let tokens = tokenize(phrase) else {
-            return output
-        }
-        
-        guard tokens.count > 0 else {
-            return output
-        }
-        
+
         if addWeights.count > 0  {
             for injectItem in addWeights {
                 wordSource[injectItem.word as NSString] = injectItem.score as AnyObject
             }
+        }
+        
+        output.LemmaTags = lemmatize(phrase.lowercased())
+        guard output.LemmaTags.count > 0 else {
+            return output
+        }
+        
+        let tokens = tokenize(tokens: output.LemmaTags, wordSource: wordSource)
+        guard tokens.count > 0 else {
+            return output
         }
         
         for position in 0...tokens.count - 1 {
