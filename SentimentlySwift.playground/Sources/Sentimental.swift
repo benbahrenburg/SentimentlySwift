@@ -5,10 +5,9 @@ typealias TaggedToken = (String, String?)
 public struct analysisResult {
     var score: Int
     var comparative: Double
-    var words: [String]
     var positive: [String]
     var negative: [String]
-    var LemmaTags: [TaggedToken]
+    var words: [TaggedToken]
 }
 
 public struct sentimentWeightValue {
@@ -124,24 +123,24 @@ public struct Sentimently {
         }
         return output
     }
-    fileprivate func tokenize(tokens: [TaggedToken], wordSource: [NSString: AnyObject]) -> [String] {
+    
+    fileprivate func tokenizeByWeight(tokens: [TaggedToken], wordSource: [NSString: AnyObject]) -> [String] {
         var output = [String]()
         
         for position in 0...tokens.count - 1 {
-            var scope: Int = 0
-            var word: String = tokens[position].0
+            var stagedToken: (word: String, score: Int) = (tokens[position].0, 0)
             for tag in tagFlatten(token: tokens[position]) {
-                if tag != word {
+                if tag != stagedToken.word {
                     if let item = wordSource[tag as NSString] {
                         let itemScore = Int(item as! NSNumber)
-                        if abs(scope) != abs(itemScore) {
-                            scope = itemScore
-                            word = tag
+                        if abs(stagedToken.score) != abs(itemScore) {
+                            stagedToken.word = tag
+                            stagedToken.score = itemScore
                         }
                     }
                 }
             }
-            output.append(word)
+            output.append(stagedToken.word)
         }
         
         return output
@@ -151,7 +150,8 @@ public struct Sentimently {
         var itemScore: Int = 0
         
         if let item = wordSource[word as NSString] {
-            itemScore += Int(item as! NSNumber)
+            let score = Int(item as! NSNumber)
+            itemScore += score
             
             guard position > 0 else {
                 return itemScore
@@ -175,7 +175,7 @@ public struct Sentimently {
                 $0 == prevtoken
             }).count > 0 {
                 if let _ = wordSource[prevtoken as NSString] {
-                    itemScore += Int(item as! NSNumber)
+                    itemScore += score
                 }
             }
         }
@@ -185,7 +185,7 @@ public struct Sentimently {
     
     public func score(_ phrase: String, addWeights: [sentimentWeightValue] = []) -> analysisResult {
         
-        var output = analysisResult(score: 0, comparative: 0, words: [], positive: [], negative: [], LemmaTags: [])
+        var output = analysisResult(score: 0, comparative: 0, positive: [], negative: [], words: [])
         
         guard var wordSource = wordSource else {
             return output
@@ -197,12 +197,12 @@ public struct Sentimently {
             }
         }
         
-        output.LemmaTags = lemmatize(phrase.lowercased())
-        guard output.LemmaTags.count > 0 else {
+        output.words = lemmatize(phrase.lowercased())
+        guard output.words.count > 0 else {
             return output
         }
         
-        let tokens = tokenize(tokens: output.LemmaTags, wordSource: wordSource)
+        let tokens = tokenizeByWeight(tokens: output.words, wordSource: wordSource)
         guard tokens.count > 0 else {
             return output
         }
