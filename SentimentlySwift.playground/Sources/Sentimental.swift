@@ -19,6 +19,7 @@ public struct wordToken {
 
 public struct analysisResult {
     var score: Int
+    var phrase: String
     var comparative: Double
     var positive: [String]
     var negative: [String]
@@ -116,9 +117,13 @@ public struct Sentimently {
         }
     }
     
+    fileprivate func defaultAFINNUrl() -> URL {
+        return URL(fileURLWithPath: Bundle.main.path(forResource: "AFINN", ofType: "json")!)
+    }
+    
     public init(rulesFile: URL? = nil, adjustments: sentimentAdjusters? = nil, addWeights: [sentimentWeightValue] = []) {
-        let rulesFile = rulesFile ?? URL(fileURLWithPath: Bundle.main.path(forResource: "AFINN", ofType: "json")!)
         self.adjustments = adjustments ?? defaultAdjusters()
+        let rulesFile = rulesFile ?? defaultAFINNUrl()
         self.wordSource = loadWordList(path: rulesFile)
         
         if addWeights.count > 0  {
@@ -166,7 +171,11 @@ public struct Sentimently {
     
     public func score(_ phrase: String, addWeights: [sentimentWeightValue] = []) -> analysisResult {
         
-        var output = analysisResult(score: 0, comparative: 0, positive: [], negative: [], wordTokens: [])
+        var output = analysisResult(score: 0, phrase: phrase, comparative: 0, positive: [], negative: [], wordTokens: [])
+
+        guard phrase.trimmingCharacters(in: .whitespacesAndNewlines).characters.count > 0 else {
+            return output
+        }
         
         guard var wordSource = wordSource else {
             return output
