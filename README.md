@@ -12,6 +12,11 @@ A Sentiment Analysis Swift Playground using the [AFINN-165](http://www2.imm.dtu.
 
 #### Considerations
 - English only, ie AFINN and Emoji Ranking are in English.  Would be grateful for PRs with additional language support
-- Swift 3 support, Swift 4 coming soon
+- Swift 3 support, only at the moment
 
-SentimentlySwift is based on the [sentiment](https://github.com/thisandagain/sentiment) node.js module.
+
+#### Roadmap
+- CocoaPods Support
+- Swift 4
+
+SentimentlySwift is based on the [sentiment](https://github.com/thisandagain/sentiment) and [sentiment-v2](https://github.com/rajatsharma305/sentiment-v2) node.js packages.
